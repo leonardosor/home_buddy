@@ -19,11 +19,21 @@ export default async function handler(req, res) {
   const fromLat = +req.query.fromLat,
     fromLng = +req.query.fromLng;
   const to = (req.query.to || "").toString().trim();
-  if (!fromLat || !fromLng || !to)
-    return res.status(400).json({ error: "fromLat, fromLng, to required" });
+  const toLat = +req.query.toLat,
+    toLng = +req.query.toLng;
+  if (!fromLat || !fromLng || (!to && !(toLat && toLng)))
+    return res
+      .status(400)
+      .json({ error: "fromLat, fromLng, and (to or toLat/toLng) required" });
 
-  const dest = await geocodeAddress(to);
-  if (!dest) return res.status(404).json({ error: "destination_not_found" });
+  // Destination is either fixed coordinates (preset landmarks) or an address to geocode.
+  let dest;
+  if (toLat && toLng) {
+    dest = { lat: toLat, lng: toLng, matched: null };
+  } else {
+    dest = await geocodeAddress(to);
+    if (!dest) return res.status(404).json({ error: "destination_not_found" });
+  }
 
   try {
     const ou = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${dest.lng},${dest.lat}?overview=false`;

@@ -76,6 +76,10 @@
   .seg button.on{background:var(--accent);color:#06101f;border-color:var(--accent)}
   .commute-big{font-size:30px;font-weight:800}
   .toggle{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);margin-top:8px;cursor:pointer}
+  .preset-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .preset-row:last-child{border-bottom:none}
+  .preset-row .pl{color:var(--ink)} .preset-row .pl small{color:var(--muted);font-size:11.5px}
+  .preset-row b{font-variant-numeric:tabular-nums;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -204,6 +208,11 @@
     </div>
 
     <div class="card">
+      <h2>Key destinations</h2>
+      <div id="presetOut"><span class="hint">Fetch a property to see drive time to Wayne State Med &amp; the Big House.</span></div>
+    </div>
+
+    <div class="card">
       <h2>Drive time</h2>
       <div id="commuteOut"><span class="hint">Add a work address above and press Get time.</span></div>
     </div>
@@ -265,6 +274,11 @@ const SITES = [
   {name:"Stargate data center (Saline Twp)", lat:42.1660, lng:-83.8350, type:"data"},
   {name:"U-M/LANL data center (Ypsi Twp)", lat:42.2020, lng:-83.6150, type:"data"},
   {name:"Form8tion data center (Augusta Twp)", lat:42.1480, lng:-83.5700, type:"data"}
+];
+/* ---------- Default commute landmarks ---------- */
+const PRESETS = [
+  {label:"Wayne State School of Medicine", sub:"540 E Canfield St, Detroit", lat:42.3554, lng:-83.0571},
+  {label:"U-M Michigan Stadium (Big House)", sub:"1201 S Main St, Ann Arbor", lat:42.2659, lng:-83.7487}
 ];
 function dumpPenalty(mi){ if(mi<1)return .08; if(mi<3)return .05; if(mi<5)return .025; if(mi<8)return .01; return 0; }
 function dataPenalty(mi){ if(mi<0.5)return .06; if(mi<1.5)return .04; if(mi<3)return .02; if(mi<5)return .0075; return 0; }
@@ -336,7 +350,8 @@ async function fetchProperty(){
     if(j.error==='no_key'){
       const g=await fetch('/api/geocode?address='+encodeURIComponent(addr)).then(x=>x.json());
       if(g.lat){propCoords={lat:g.lat,lng:g.lng};autoSelectCity(g.matched);
-        st.className='status ok';st.textContent='Located (no RentCast key set — fields stay manual). '+(g.matched||'');}
+        st.className='status ok';st.textContent='Located (no RentCast key set — fields stay manual). '+(g.matched||'');
+        fetchPresets();}
       else{st.className='status err';st.textContent='Could not locate that address.';}
       $('fetchBtn').disabled=false;return;
     }
@@ -360,9 +375,28 @@ async function fetchProperty(){
     if(j.listPrice)bits.push('listed '+money(j.listPrice));
     else if(j.lastSalePrice)bits.push('last sold '+money(j.lastSalePrice)+(j.lastSaleDate?(' ('+j.lastSaleDate.slice(0,7)+')'):''));
     st.className='status ok';st.textContent='Loaded: '+bits.join(' · ');
+    fetchPresets();
     run();
   }catch(e){st.className='status err';st.textContent='Network error: '+e;}
   $('fetchBtn').disabled=false;
+}
+
+/* ---------- default landmark drive times ---------- */
+async function fetchPresets(){
+  if(!propCoords)return;
+  const out=$('presetOut');
+  out.innerHTML='<span class="hint">Routing to landmarks…</span>';
+  const rows=[];
+  for(const d of PRESETS){
+    let txt='—';
+    try{
+      const r=await fetch(`/api/commute?fromLat=${propCoords.lat}&fromLng=${propCoords.lng}&toLat=${d.lat}&toLng=${d.lng}`);
+      const j=await r.json();
+      if(j&&j.minutes!=null)txt=`${j.minutes} min &middot; ${j.miles} mi`;
+    }catch(e){txt='error';}
+    rows.push(`<div class="preset-row"><span class="pl">${d.label}<br><small>${d.sub}</small></span><b>${txt}</b></div>`);
+  }
+  out.innerHTML=rows.join('');
 }
 
 /* ---------- commute ---------- */

@@ -213,6 +213,16 @@
     </div>
 
     <div class="card">
+      <h2>Catholic schools within 30 min drive</h2>
+      <div id="schoolsOut"><span class="hint">Fetch a property to list nearby Catholic schools by drive time.</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Nearby cities &middot; restaurants per capita</h2>
+      <div id="citiesOut"><span class="hint">Fetch a property to compare nearby cities by restaurants per 1,000 residents.</span></div>
+    </div>
+
+    <div class="card">
       <h2>Drive time</h2>
       <div id="commuteOut"><span class="hint">Add a work address above and press Get time.</span></div>
     </div>
@@ -384,6 +394,7 @@ async function fetchProperty(){
 /* ---------- default landmark drive times ---------- */
 async function fetchPresets(){
   if(!propCoords)return;
+  fetchSchools();fetchCities();
   const out=$('presetOut');
   out.innerHTML='<span class="hint">Routing to landmarks…</span>';
   const rows=[];
@@ -397,6 +408,39 @@ async function fetchPresets(){
     rows.push(`<div class="preset-row"><span class="pl">${d.label}<br><small>${d.sub}</small></span><b>${txt}</b></div>`);
   }
   out.innerHTML=rows.join('');
+}
+
+/* ---------- Catholic schools within 30 min ---------- */
+async function fetchSchools(){
+  if(!propCoords)return;
+  const out=$('schoolsOut');
+  out.innerHTML='<span class="hint">Finding Catholic schools within 30 min…</span>';
+  try{
+    const r=await fetch(`/api/schools?fromLat=${propCoords.lat}&fromLng=${propCoords.lng}&maxMin=30`);
+    const j=await r.json();
+    if(j.error){out.innerHTML=`<span class="hint">Couldn't load schools (${j.error}).</span>`;return;}
+    if(!j.schools||!j.schools.length){out.innerHTML='<span class="hint">No Catholic schools found within a 30-minute drive.</span>';return;}
+    out.innerHTML=j.schools.map(s=>
+      `<div class="preset-row"><span class="pl">${s.name}${s.confirmed?'':' <small>(likely)</small>'}${s.address?`<br><small>${s.address}</small>`:''}</span><b>${s.minutes} min &middot; ${s.miles??'—'} mi</b></div>`
+    ).join('');
+  }catch(e){out.innerHTML='<span class="hint">Network error loading schools.</span>';}
+}
+
+/* ---------- nearby cities · restaurants per capita ---------- */
+async function fetchCities(){
+  if(!propCoords)return;
+  const out=$('citiesOut');
+  out.innerHTML='<span class="hint">Tallying restaurants per capita nearby…</span>';
+  try{
+    const r=await fetch(`/api/cities?fromLat=${propCoords.lat}&fromLng=${propCoords.lng}`);
+    const j=await r.json();
+    if(j.error){out.innerHTML=`<span class="hint">Couldn't load cities (${j.error}).</span>`;return;}
+    if(!j.cities||!j.cities.length){out.innerHTML='<span class="hint">No population-tagged cities found nearby.</span>';return;}
+    const rows=j.cities.map(c=>
+      `<div class="preset-row"><span class="pl">${c.name}<br><small>pop ${c.population?.toLocaleString()??'—'} · ${c.restaurants??'—'} restaurants · ${c.miles} mi</small></span><b>${c.perCapita!=null?c.perCapita.toFixed(2):'—'}<small> /1k</small></b></div>`
+    ).join('');
+    out.innerHTML=rows+(j.note?`<div class="note">${j.note}</div>`:'');
+  }catch(e){out.innerHTML='<span class="hint">Network error loading cities.</span>';}
 }
 
 /* ---------- commute ---------- */

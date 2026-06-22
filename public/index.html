@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SE Michigan Home Value Analyzer</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1d2638; --line:#2a3650;
+    --ink:#e8edf6; --muted:#9aa7bf; --accent:#4f9cff; --good:#5fd07a; --bad:#ff6b6b;
+    --chip:#223049;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.45;font-size:15px}
+  header{padding:22px 20px 8px;max-width:1180px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13.5px;max-width:780px}
+  .wrap{max-width:1180px;margin:0 auto;padding:14px 20px 60px;display:grid;grid-template-columns:1.05fr 1fr;gap:18px}
+  @media(max-width:920px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 16px 18px;margin-bottom:16px}
+  .card h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px}
+  label{display:block;font-size:12.5px;color:var(--muted);margin:0 0 4px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:9px;padding:9px 10px;font-size:14px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:3px}
+  button{cursor:pointer;border:none;border-radius:9px;font-size:14px;font-weight:600}
+  .btn{background:var(--accent);color:#06101f;padding:11px 16px}
+  .btn:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn-ghost{background:var(--chip);color:var(--ink);padding:9px 14px;font-weight:500;font-size:13px}
+  .addr-row{display:flex;gap:10px;align-items:flex-end}
+  .addr-row > div{flex:1}
+  .status{font-size:12px;margin-top:7px;min-height:16px}
+  .status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--accent)}
+  .comp-tbl{width:100%;border-collapse:collapse;margin-bottom:8px}
+  .comp-tbl th{font-size:11px;color:var(--muted);text-align:left;font-weight:500;padding:0 6px 4px}
+  .comp-tbl td{padding:3px 4px}
+  .comp-tbl input{padding:7px 8px;font-size:13px}
+  .x{background:none;color:var(--bad);font-size:18px;padding:0 6px;line-height:1}
+  .verdict{border-radius:14px;padding:18px;text-align:center;margin-bottom:14px;border:1px solid var(--line)}
+  .verdict .tag{font-size:26px;font-weight:800}
+  .verdict .pct{font-size:15px;margin-top:2px;font-weight:600}
+  .verdict .ln{font-size:12.5px;color:var(--muted);margin-top:8px}
+  .vt-over{background:linear-gradient(160deg,#3a1820,#221019);border-color:#5a2230}
+  .vt-fair{background:linear-gradient(160deg,#33300f,#1f1d0c);border-color:#5a5320}
+  .vt-under{background:linear-gradient(160deg,#10301c,#0d2014);border-color:#1f5a34}
+  .vt-na{background:var(--panel2)}
+  .nums{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .stat .k{font-size:11.5px;color:var(--muted)}
+  .stat .v{font-size:19px;font-weight:700;margin-top:1px}
+  .wf-row{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .wf-row:last-child{border-bottom:none}
+  .wf-name{flex:1}
+  .wf-bar{height:7px;border-radius:4px;min-width:2px}
+  .wf-amt{width:96px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .pos{color:var(--good)} .neg{color:var(--bad)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
+  .chip{background:var(--chip);border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:12px}
+  .chip b{color:var(--ink)} .chip .d{color:var(--muted)}
+  .chip.hot{border-color:#5a2230;background:#2a141a}
+  details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+  summary{cursor:pointer;font-size:12.5px;color:var(--muted)}
+  .det-list{font-size:12.5px;color:var(--muted);margin-top:6px}
+  .det-list li{margin-bottom:3px}
+  .afford{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .big{font-size:24px;font-weight:800}
+  .note{font-size:11.5px;color:var(--muted);margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+  a{color:var(--accent)}
+  .seg{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+  .seg button{background:var(--panel2);border:1px solid var(--line);color:var(--muted);padding:6px 9px;font-size:12px;font-weight:500}
+  .seg button.on{background:var(--accent);color:#06101f;border-color:var(--accent)}
+  .commute-big{font-size:30px;font-weight:800}
+  .toggle{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);margin-top:8px;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <h1>SE Michigan Home Value Analyzer</h1>
+  <p class="sub">Type an address in the Ann Arbor&ndash;Detroit corridor and it auto-fills the home's details and comps, then scores it against the area baseline &mdash; adjusting for age, condition, crime, commute, and proximity to the I-94 hazardous-waste landfill and the proposed Saline / Ypsilanti / Augusta data centers. Down payment defaults to $200,000.</p>
+</header>
+
+<div class="wrap">
+  <!-- LEFT: INPUTS -->
+  <div>
+    <div class="card">
+      <h2>1 &middot; Address</h2>
+      <div class="addr-row">
+        <div>
+          <label>Property address</label>
+          <input id="address" placeholder="e.g. 1234 Maple Rd, Ypsilanti, MI 48197">
+        </div>
+        <button class="btn-ghost" id="fetchBtn" onclick="fetchProperty()">Fetch&nbsp;data</button>
+      </div>
+      <div class="status" id="fetchStatus"></div>
+    </div>
+
+    <div class="card">
+      <h2>2 &middot; The property <span style="font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0">(auto-filled, editable)</span></h2>
+      <div class="row">
+        <div><label>List / asking price ($)</label><input id="price" type="number" placeholder="enter or fetch"></div>
+        <div><label>Living area (sq ft)</label><input id="sqft" type="number"></div>
+      </div>
+      <div class="row3">
+        <div><label>Beds</label><input id="beds" type="number"></div>
+        <div><label>Baths</label><input id="baths" type="number" step="0.5"></div>
+        <div><label>Year built</label><input id="year" type="number"></div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Area / city (sets baseline)</label>
+          <select id="city"></select>
+          <div class="hint" id="cityHint"></div>
+        </div>
+        <div>
+          <label>Condition / work done</label>
+          <select id="reno">
+            <option value="0.12">Gut-renovated / like new (+12%)</option>
+            <option value="0.05">Updated kitchen &amp; baths (+5%)</option>
+            <option value="0" selected>Original but maintained (0%)</option>
+            <option value="-0.10">Dated, needs cosmetic work (-10%)</option>
+            <option value="-0.20">Major work / distressed (-20%)</option>
+          </select>
+          <div class="hint">The API can't judge condition &mdash; set this from the photos.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3 &middot; Comparable sales <span style="font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0">(auto-filled from API)</span></h2>
+      <table class="comp-tbl">
+        <thead><tr><th>Sold $</th><th>Sq ft</th><th>$/sqft</th><th></th></tr></thead>
+        <tbody id="comps"></tbody>
+      </table>
+      <button class="btn-ghost" onclick="addComp()">+ Add comp</button>
+      <div class="hint" style="margin-top:6px">Fetching an address pulls nearby comparables automatically. Add or remove rows freely.</div>
+    </div>
+
+    <div class="card">
+      <h2>4 &middot; Commute</h2>
+      <div class="addr-row">
+        <div>
+          <label>Drive to (work / school address)</label>
+          <input id="workAddr" placeholder="e.g. 500 S State St, Ann Arbor, MI">
+        </div>
+        <button class="btn-ghost" id="commuteBtn" onclick="fetchCommute()">Get&nbsp;time</button>
+      </div>
+      <div class="status" id="commuteStatus"></div>
+      <label class="toggle"><input type="checkbox" id="rush" style="width:auto" onchange="updateCommuteFactor()"> add rush-hour (+30%)</label>
+    </div>
+
+    <div class="card">
+      <h2>5 &middot; Detractors (manual override)</h2>
+      <div class="hint" style="margin-bottom:8px">Auto-computed from the address when fetched. Use these only if no coordinates are available.</div>
+      <label>Hazardous-waste / dump exposure</label>
+      <div class="seg" data-man="dump">
+        <button data-v="0" class="on">None / far</button>
+        <button data-v="0.025">3&ndash;5 mi</button>
+        <button data-v="0.05">1&ndash;3 mi</button>
+        <button data-v="0.08">&lt;1 mi</button>
+      </div>
+      <label style="margin-top:10px">Data-center / industrial proximity</label>
+      <div class="seg" data-man="ind">
+        <button data-v="0" class="on">None / far</button>
+        <button data-v="0.02">1.5&ndash;3 mi</button>
+        <button data-v="0.04">0.5&ndash;1.5 mi</button>
+        <button data-v="0.06">&lt;0.5 mi</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>6 &middot; Financing</h2>
+      <div class="row3">
+        <div><label>Down payment ($)</label><input id="down" type="number" value="200000"></div>
+        <div><label>Rate (% APR)</label><input id="rate" type="number" step="0.05" value="6.75"></div>
+        <div><label>Term (yrs)</label><input id="term" type="number" value="30"></div>
+      </div>
+      <div class="row">
+        <div><label>Property tax (% / yr)</label><input id="tax" type="number" step="0.05" value="1.6"></div>
+        <div><label>Insurance ($ / yr)</label><input id="ins" type="number" value="1800"></div>
+      </div>
+    </div>
+
+    <button class="btn" style="width:100%;padding:13px" onclick="run()">Analyze this property</button>
+  </div>
+
+  <!-- RIGHT: RESULTS -->
+  <div>
+    <div class="card">
+      <h2>Verdict</h2>
+      <div id="verdict" class="verdict vt-na"><div class="tag">&mdash;</div><div class="ln">Fetch an address (or fill the fields) and press Analyze.</div></div>
+      <div class="nums">
+        <div class="stat"><div class="k">Our estimated fair value</div><div class="v" id="fairv">&mdash;</div></div>
+        <div class="stat"><div class="k">List price</div><div class="v" id="listv">&mdash;</div></div>
+      </div>
+      <div class="nums">
+        <div class="stat"><div class="k">RentCast estimate</div><div class="v" id="avmv">&mdash;</div></div>
+        <div class="stat"><div class="k">Area baseline $/sqft</div><div class="v" id="basesq">&mdash;</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Drive time</h2>
+      <div id="commuteOut"><span class="hint">Add a work address above and press Get time.</span></div>
+    </div>
+
+    <div class="card">
+      <h2>How fair value was built</h2>
+      <div id="waterfall"><div class="hint">Adjustment breakdown appears here.</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Location risk near this home</h2>
+      <div class="chips" id="riskchips"><span class="hint">Fetch an address for live distance to real sites.</span></div>
+      <details>
+        <summary>Known negatives tracked in this tool</summary>
+        <ul class="det-list">
+          <li><b>Wayne Disposal / US&nbsp;Ecology</b> hazardous-waste landfill &mdash; 49350 N I-94 Service Dr, Belleville (Van Buren Twp). Radioactive waste permanently blocked May 2026, but an active hazardous-waste site on I-94.</li>
+          <li><b>Stargate data center</b> (OpenAI/Oracle), Saline Township &mdash; 2.2M sq ft / ~575 acres off W. Michigan Ave.</li>
+          <li><b>U-M / Los Alamos data center</b>, Ypsilanti Township &mdash; ~$1.25B, Textile Rd area; under local opposition.</li>
+          <li><b>Form8tion data center</b>, Augusta Township &mdash; proposed ~810-acre, $1B project.</li>
+        </ul>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>If you buy at list price</h2>
+      <div class="afford">
+        <div class="stat"><div class="k">Loan amount</div><div class="v" id="loan">&mdash;</div></div>
+        <div class="stat"><div class="k">Down payment</div><div class="v" id="downv">&mdash;</div></div>
+        <div class="stat"><div class="k">Monthly P&amp;I</div><div class="v" id="pi">&mdash;</div></div>
+        <div class="stat"><div class="k">Monthly PITI (all-in)</div><div class="v big" id="piti">&mdash;</div></div>
+      </div>
+      <div class="note" id="afnote"></div>
+    </div>
+
+    <div class="note">
+      Estimates only &mdash; not an appraisal or financial advice. Auto-filled data is public-record (via RentCast) and may lag the live listing; verify price, square footage, taxes, and condition. Commute is typical free-flow driving time.
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- Area baselines (2026 medians, editable) ---------- */
+const AREAS = {
+  "Ann Arbor":      {sqft:280, crime:20, note:"Premium market; UM demand"},
+  "Saline":         {sqft:215, crime:12, note:"Low crime; near Stargate data center"},
+  "Dexter":         {sqft:230, crime:11, note:"Desirable, low crime"},
+  "Brighton":       {sqft:208, crime:18, note:"Livingston Co.; median ~$285K"},
+  "Pinckney":       {sqft:200, crime:14, note:"Lakes area, Livingston Co."},
+  "Canton":         {sqft:190, crime:15, note:"Suburban Wayne Co."},
+  "Belleville":     {sqft:165, crime:30, note:"Near I-94 Wayne Disposal site"},
+  "Ypsilanti":      {sqft:160, crime:40, note:"Value market; data-center fights nearby"},
+  "Ypsilanti Twp":  {sqft:165, crime:33, note:"Near U-M/LANL data center"},
+  "Romulus":        {sqft:150, crime:35, note:"Airport/industrial corridor"},
+  "Detroit":        {sqft:114, crime:62, note:"Wide block-by-block variance"},
+  "Other / custom": {sqft:185, crime:30, note:"Generic SE Michigan default"}
+};
+const SITES = [
+  {name:"Wayne Disposal landfill (I-94)", lat:42.2249, lng:-83.4847, type:"dump"},
+  {name:"Stargate data center (Saline Twp)", lat:42.1660, lng:-83.8350, type:"data"},
+  {name:"U-M/LANL data center (Ypsi Twp)", lat:42.2020, lng:-83.6150, type:"data"},
+  {name:"Form8tion data center (Augusta Twp)", lat:42.1480, lng:-83.5700, type:"data"}
+];
+function dumpPenalty(mi){ if(mi<1)return .08; if(mi<3)return .05; if(mi<5)return .025; if(mi<8)return .01; return 0; }
+function dataPenalty(mi){ if(mi<0.5)return .06; if(mi<1.5)return .04; if(mi<3)return .02; if(mi<5)return .0075; return 0; }
+function haversine(a,b,c,d){const R=3958.8,t=Math.PI/180;
+  const dLat=(c-a)*t,dLng=(d-b)*t,la=a*t,lc=c*t;
+  const h=Math.sin(dLat/2)**2+Math.cos(la)*Math.cos(lc)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));}
+
+/* ---------- state ---------- */
+let propCoords=null;
+let commuteMinRaw=null;
+let avmValue=null;
+
+const $=id=>document.getElementById(id);
+const money=n=>'$'+Math.round(n).toLocaleString();
+
+/* ---------- city dropdown ---------- */
+const citySel=$('city');
+Object.keys(AREAS).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;citySel.appendChild(o);});
+citySel.value="Ypsilanti";
+function cityHint(){const a=AREAS[citySel.value];$('cityHint').textContent=`Baseline ~ $${a.sqft}/sqft, crime ~${a.crime}/1k, ${a.note}`;}
+citySel.addEventListener('change',cityHint); cityHint();
+function autoSelectCity(addr){
+  if(!addr)return;const low=addr.toLowerCase();
+  for(const k of Object.keys(AREAS)){
+    const name=k.replace(' Twp','').toLowerCase();
+    if(name!=='other / custom' && low.includes(name)){citySel.value=k;cityHint();return;}
+  }
+}
+
+/* ---------- comps ---------- */
+const compsBody=$('comps');
+function compRow(p='',s=''){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td><input type="number" class="cP" value="${p}"></td>
+    <td><input type="number" class="cS" value="${s}"></td>
+    <td class="cPS" style="font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px">&mdash;</td>
+    <td><button class="x" onclick="this.closest('tr').remove();recalcComps()">&times;</button></td>`;
+  compsBody.appendChild(tr);
+  tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',recalcComps));
+}
+function addComp(){compRow();}
+function recalcComps(){
+  compsBody.querySelectorAll('tr').forEach(tr=>{
+    const p=+tr.querySelector('.cP').value,s=+tr.querySelector('.cS').value;
+    tr.querySelector('.cPS').textContent=(p>0&&s>0)?'$'+Math.round(p/s):'—';
+  });
+}
+function clearComps(){compsBody.innerHTML='';}
+compRow();compRow();compRow();recalcComps();
+
+/* ---------- detractor toggles ---------- */
+document.querySelectorAll('.seg').forEach(seg=>{
+  seg.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  }));
+});
+function manVal(name){const b=document.querySelector(`[data-man="${name}"] button.on`);return b?+b.dataset.v:0;}
+
+/* ---------- fetch property from address ---------- */
+async function fetchProperty(){
+  const addr=$('address').value.trim();
+  const st=$('fetchStatus');
+  if(!addr){st.className='status err';st.textContent='Enter an address first.';return;}
+  $('fetchBtn').disabled=true;st.className='status busy';st.textContent='Looking up property…';
+  try{
+    const r=await fetch('/api/property?address='+encodeURIComponent(addr));
+    const j=await r.json();
+    if(j.error==='no_key'){
+      const g=await fetch('/api/geocode?address='+encodeURIComponent(addr)).then(x=>x.json());
+      if(g.lat){propCoords={lat:g.lat,lng:g.lng};autoSelectCity(g.matched);
+        st.className='status ok';st.textContent='Located (no RentCast key set — fields stay manual). '+(g.matched||'');}
+      else{st.className='status err';st.textContent='Could not locate that address.';}
+      $('fetchBtn').disabled=false;return;
+    }
+    if(j.error){st.className='status err';st.textContent='Lookup failed: '+(j.message||j.error);$('fetchBtn').disabled=false;return;}
+
+    if(j.lat){propCoords={lat:j.lat,lng:j.lng};}
+    autoSelectCity(j.matched||addr);
+    if(j.sqft)$('sqft').value=j.sqft;
+    if(j.beds!=null)$('beds').value=j.beds;
+    if(j.baths!=null)$('baths').value=j.baths;
+    if(j.year)$('year').value=j.year;
+    if(j.listPrice)$('price').value=j.listPrice;
+    else if(j.lastSalePrice)$('price').value=j.lastSalePrice;
+    else if(j.avm)$('price').value=j.avm;
+    avmValue=j.avm||null;
+    if(Array.isArray(j.comps)&&j.comps.length){clearComps();j.comps.forEach(c=>compRow(c.price,c.sqft));recalcComps();}
+
+    const bits=[];
+    if(j.matched)bits.push(j.matched);
+    if(j.avm)bits.push('est. '+money(j.avm));
+    if(j.listPrice)bits.push('listed '+money(j.listPrice));
+    else if(j.lastSalePrice)bits.push('last sold '+money(j.lastSalePrice)+(j.lastSaleDate?(' ('+j.lastSaleDate.slice(0,7)+')'):''));
+    st.className='status ok';st.textContent='Loaded: '+bits.join(' · ');
+    run();
+  }catch(e){st.className='status err';st.textContent='Network error: '+e;}
+  $('fetchBtn').disabled=false;
+}
+
+/* ---------- commute ---------- */
+async function fetchCommute(){
+  const to=$('workAddr').value.trim();const st=$('commuteStatus');
+  if(!to){st.className='status err';st.textContent='Enter a destination.';return;}
+  if(!propCoords){st.className='status err';st.textContent='Fetch the property address first (need its location).';return;}
+  $('commuteBtn').disabled=true;st.className='status busy';st.textContent='Routing…';
+  try{
+    const r=await fetch(`/api/commute?fromLat=${propCoords.lat}&fromLng=${propCoords.lng}&to=${encodeURIComponent(to)}`);
+    const j=await r.json();
+    if(j.error){st.className='status err';st.textContent='Failed: '+(j.message||j.error);$('commuteBtn').disabled=false;return;}
+    commuteMinRaw=j.minutes;
+    st.className='status ok';st.textContent=`${j.minutes} min · ${j.miles} mi`+(j.source==='estimate'?' (estimated)':'')+(j.destMatched?` → ${j.destMatched}`:'');
+    updateCommuteFactor();
+  }catch(e){st.className='status err';st.textContent='Network error: '+e;}
+  $('commuteBtn').disabled=false;
+}
+function commuteMinutes(){if(commuteMinRaw==null)return null;return $('rush').checked?Math.round(commuteMinRaw*1.3):commuteMinRaw;}
+function commuteFactor(){
+  const m=commuteMinutes();if(m==null)return 0;
+  if(m<15)return 0.01;
+  if(m<=25)return 0;
+  return Math.max(-0.04,-(m-25)/10*0.004);
+}
+function updateCommuteFactor(){
+  const m=commuteMinutes();const out=$('commuteOut');
+  if(m==null){out.innerHTML='<span class="hint">Add a work address above and press Get time.</span>';return;}
+  const f=commuteFactor();
+  out.innerHTML=`<div class="commute-big">${m} min</div>
+    <div class="hint">one-way drive${$('rush').checked?' (rush-hour)':' (free-flow)'} · value impact ${f===0?'neutral':(f>0?'+':'')+(f*100).toFixed(1)+'%'}</div>`;
+}
+
+/* ---------- comps median ---------- */
+function compMedianPS(){
+  const arr=[];compsBody.querySelectorAll('tr').forEach(tr=>{
+    const p=+tr.querySelector('.cP').value,s=+tr.querySelector('.cS').value;
+    if(p>0&&s>0)arr.push(p/s);});
+  if(!arr.length)return null;arr.sort((a,b)=>a-b);
+  const m=Math.floor(arr.length/2);
+  return arr.length%2?arr[m]:(arr[m-1]+arr[m])/2;
+}
+
+/* ---------- main analyze ---------- */
+function run(){
+  const price=+$('price').value,sqft=+$('sqft').value,year=+$('year').value;
+  const area=AREAS[citySel.value];
+  if(!(price>0&&sqft>0)){
+    $('verdict').className='verdict vt-na';
+    $('verdict').innerHTML='<div class="tag">—</div><div class="ln">Need at least a price and square footage.</div>';
+    return;
+  }
+  const compPS=compMedianPS();
+  const basePS=area.sqft;
+  const nComps=[...compsBody.querySelectorAll('tr')].filter(tr=>+tr.querySelector('.cP').value>0&&+tr.querySelector('.cS').value>0).length;
+  let blendPS,compW=0;
+  if(compPS){compW=Math.min(0.7,0.2+0.13*nComps);blendPS=compPS*compW+basePS*(1-compW);}else blendPS=basePS;
+  const baseVal=blendPS*sqft;
+
+  const adj=[];
+  const ageDelta=Math.max(-0.10,Math.min(0.10,(year-2005)*0.004));
+  adj.push({name:`Age (built ${year||'?'})`,f:ageDelta});
+  adj.push({name:'Condition / work done',f:+$('reno').value});
+  let crimeF=area.crime<=20?Math.min(0.03,(20-area.crime)*0.0025):Math.max(-0.12,-(area.crime-20)*0.003);
+  adj.push({name:`Crime (~${area.crime}/1k)`,f:crimeF});
+  const cf=commuteFactor();
+  if(cf!==0)adj.push({name:`Commute (${commuteMinutes()} min)`,f:cf});
+
+  const riskChips=$('riskchips');riskChips.innerHTML='';
+  let dumpF=0,dataF=0;
+  if(propCoords){
+    SITES.forEach(s=>{
+      const mi=haversine(propCoords.lat,propCoords.lng,s.lat,s.lng);
+      const pen=s.type==='dump'?dumpPenalty(mi):dataPenalty(mi);
+      if(s.type==='dump')dumpF=Math.max(dumpF,pen);else dataF+=pen;
+      const hot=pen>0;
+      riskChips.innerHTML+=`<span class="chip ${hot?'hot':''}"><b>${mi.toFixed(1)} mi</b> <span class="d">${s.name}</span>${hot?` &middot; -${(pen*100).toFixed(1)}%`:''}</span>`;
+    });
+  }else{
+    dumpF=manVal('dump');dataF=manVal('ind');
+    if(dumpF)riskChips.innerHTML+=`<span class="chip hot"><b>Dump exposure</b> &middot; -${(dumpF*100).toFixed(1)}%</span>`;
+    if(dataF)riskChips.innerHTML+=`<span class="chip hot"><b>Data center / industrial</b> &middot; -${(dataF*100).toFixed(1)}%</span>`;
+    if(!dumpF&&!dataF)riskChips.innerHTML=`<span class="chip"><span class="d">No detractor proximity set</span></span>`;
+  }
+  if(dumpF)adj.push({name:'Hazardous-waste proximity',f:-dumpF});
+  if(dataF)adj.push({name:'Data-center / industrial proximity',f:-dataF});
+
+  let fair=baseVal;adj.forEach(a=>fair*=(1+a.f));
+  const diff=(price-fair)/fair;
+  const vEl=$('verdict');vEl.className='verdict';
+  let tag,cls,line;
+  if(diff>0.08){tag='OVERPRICED';cls='vt-over';line='List is well above what condition, comps and location support.';}
+  else if(diff>0.03){tag='SLIGHTLY HIGH';cls='vt-fair';line='A bit rich — room to negotiate toward fair value.';}
+  else if(diff>=-0.03){tag='FAIRLY PRICED';cls='vt-fair';line='List sits right around estimated fair value.';}
+  else if(diff>=-0.12){tag='UNDERPRICED';cls='vt-under';line='Priced below fair value — worth a close look.';}
+  else{tag='POTENTIAL DEAL';cls='vt-under';line='Sits well under fair value. Verify there is no hidden problem.';}
+  vEl.classList.add(cls);
+  vEl.innerHTML=`<div class="tag">${tag}</div>
+    <div class="pct">${diff>=0?'+':'-'}${Math.abs(diff*100).toFixed(1)}% vs. estimated fair value</div>
+    <div class="ln">${line}</div>`;
+
+  $('fairv').textContent=money(fair);
+  $('listv').textContent=money(price);
+  $('avmv').textContent=avmValue?money(avmValue):'—';
+  $('basesq').textContent='$'+basePS;
+
+  const wf=$('waterfall');wf.innerHTML='';
+  const s0=document.createElement('div');s0.className='wf-row';
+  s0.innerHTML=`<div class="wf-name">Base: $${Math.round(blendPS)}/sqft${compPS?` (${Math.round(compW*100)}% comps)`:''} &times; ${sqft.toLocaleString()} sqft</div><div class="wf-amt">${money(baseVal)}</div>`;
+  wf.appendChild(s0);
+  let running=baseVal;
+  adj.forEach(a=>{
+    const before=running;running*=(1+a.f);const d=running-before;
+    const r=document.createElement('div');r.className='wf-row';
+    r.innerHTML=`<div class="wf-name">${a.name}</div>
+      <div class="wf-bar" style="width:${Math.min(60,Math.abs(a.f)*260)}%;background:${a.f>=0?'var(--good)':'var(--bad)'}"></div>
+      <div class="wf-amt ${a.f>=0?'pos':'neg'}">${a.f>=0?'+':'-'}${money(Math.abs(d))}</div>`;
+    wf.appendChild(r);
+  });
+  const e0=document.createElement('div');e0.className='wf-row';
+  e0.innerHTML=`<div class="wf-name"><b>Estimated fair value</b></div><div class="wf-amt"><b>${money(fair)}</b></div>`;
+  wf.appendChild(e0);
+
+  const down=+$('down').value,rate=+$('rate').value/100/12,term=+$('term').value*12;
+  const loan=Math.max(0,price-down);
+  const pi=rate>0?loan*rate/(1-Math.pow(1+rate,-term)):loan/term;
+  const taxM=price*(+$('tax').value/100)/12,insM=(+$('ins').value)/12;
+  $('loan').textContent=money(loan);
+  $('downv').textContent=money(down);
+  $('pi').textContent=money(pi)+'/mo';
+  $('piti').textContent=money(pi+taxM+insM)+'/mo';
+  const ltv=loan/price*100;
+  $('afnote').textContent=(down>=price?'Cash purchase — no loan needed. ':`Loan-to-value ${ltv.toFixed(0)}%. `)+
+    `Taxes ${money(taxM)}/mo + insurance ${money(insM)}/mo included. `+
+    (ltv>80?'LTV over 80% — expect PMI until you reach 20% equity.':'At/under 80% LTV — typically no PMI.');
+}
+</script>
+</body>
+</html>

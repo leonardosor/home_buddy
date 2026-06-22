@@ -1,0 +1,10 @@
+{
+  "name": "se-mi-home-analyzer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SE Michigan home value analyzer with address auto-fill (RentCast), commute time, and location-risk scoring.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  }
+}

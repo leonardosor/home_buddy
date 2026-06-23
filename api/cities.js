@@ -4,7 +4,44 @@
 // Restaurants are counted within a radius of each city/town center (OSM has no cheap
 // per-municipality join), so figures are approximate and best for comparison, not exact.
 
-const OVERPASS = "https://overpass-api.de/api/interpreter";
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+
+export const config = { maxDuration: 30 };
+
+async function overpass(q) {
+  let lastErr = "no endpoints";
+  for (const ep of OVERPASS_ENDPOINTS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 18000);
+      const r = await fetch(ep, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "se-mi-home-analyzer/1.0",
+        },
+        body: "data=" + encodeURIComponent(q),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (!r.ok) { lastErr = `HTTP ${r.status} @ ${ep}`; continue; }
+      const text = await r.text();
+      try {
+        return { ok: true, data: JSON.parse(text) };
+      } catch {
+        lastErr = `non-JSON @ ${ep}`;
+        continue;
+      }
+    } catch (e) {
+      lastErr = `${e && e.name === "AbortError" ? "timeout" : String(e)} @ ${ep}`;
+    }
+  }
+  return { ok: false, error: lastErr };
+}
 
 function haversine(a, b, c, d) {
   const R = 3958.8, t = Math.PI / 180;
@@ -20,40 +57,30 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "fromLat and fromLng required" });
   const radius = Math.round(radiusKm * 1000);
 
-  // 1) Nearby populated places with a known population.
-  const placeQ = `[out:json][timeout:25];
+  const placeQ = `[out:json][timeout:20];
 (
   node["place"~"^(city|town)$"]["population"](around:${radius},${fromLat},${fromLng});
 );
 out tags;`;
 
-  let places = [];
-  try {
-    const r = await fetch(OVERPASS, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "data=" + encodeURIComponent(placeQ),
-    });
-    const j = await r.json();
-    places = (j.elements || [])
-      .map((el) => {
-        const pop = parseInt((el.tags.population || "").replace(/[^\d]/g, ""), 10);
-        return {
-          name: el.tags.name || "Unknown",
-          lat: el.lat,
-          lng: el.lon,
-          population: pop > 0 ? pop : null,
-        };
-      })
-      .filter((p) => p.population && p.lat != null);
-  } catch (e) {
-    return res.status(502).json({ error: "overpass_failed", message: String(e) });
-  }
+  const po = await overpass(placeQ);
+  if (!po.ok)
+    return res.status(502).json({ error: "overpass_failed", message: po.error });
+  const places = (po.data.elements || [])
+    .map((el) => {
+      const pop = parseInt((el.tags.population || "").replace(/[^\d]/g, ""), 10);
+      return {
+        name: el.tags.name || "Unknown",
+        lat: el.lat,
+        lng: el.lon,
+        population: pop > 0 ? pop : null,
+      };
+    })
+    .filter((p) => p.population && p.lat != null);
 
   if (!places.length)
     return res.status(200).json({ cities: [], note: "No population-tagged cities found nearby." });
 
-  // De-dupe by name, keep nearest, cap to 14 for a reasonable Overpass count call.
   const byName = new Map();
   for (const p of places) {
     p.crow = haversine(fromLat, fromLng, p.lat, p.lng);
@@ -62,39 +89,28 @@ out tags;`;
   }
   let cities = [...byName.values()].sort((a, b) => a.crow - b.crow).slice(0, 14);
 
-  // 2) Count restaurants within a radius of each center, scaled to town size.
-  //    Bigger places get a wider catchment so we don't undercount sprawl.
+  cities.forEach((c) => {
+    c.rMeters = c.population > 50000 ? 6000 : c.population > 15000 ? 4000 : 2500;
+  });
   const parts = cities
-    .map((c) => {
-      const rMeters = c.population > 50000 ? 6000 : c.population > 15000 ? 4000 : 2500;
-      c.rMeters = rMeters;
-      return `node["amenity"="restaurant"](around:${rMeters},${c.lat},${c.lng});`;
-    })
+    .map(
+      (c, i) =>
+        `node["amenity"="restaurant"](around:${c.rMeters},${c.lat},${c.lng})->.r${i};\n.r${i} out count;`
+    )
     .join("\n");
-  const restQ = `[out:json][timeout:60];
-(
-${parts}
-);
-out count;`;
+  const restQ = `[out:json][timeout:60];\n${parts}`;
 
-  // Per-city counts need separate queries to attribute correctly; run them in parallel.
-  await Promise.all(
-    cities.map(async (c) => {
-      const q = `[out:json][timeout:25];node["amenity"="restaurant"](around:${c.rMeters},${c.lat},${c.lng});out count;`;
-      try {
-        const r = await fetch(OVERPASS, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: "data=" + encodeURIComponent(q),
-        });
-        const j = await r.json();
-        const cnt = j.elements?.[0]?.tags?.total ?? j.elements?.[0]?.count;
-        c.restaurants = cnt != null ? parseInt(cnt, 10) : 0;
-      } catch {
-        c.restaurants = null;
-      }
-    })
-  );
+  const ro = await overpass(restQ);
+  if (ro.ok && Array.isArray(ro.data.elements)) {
+    const counts = ro.data.elements
+      .filter((e) => e.type === "count")
+      .map((e) => parseInt(e.tags?.total ?? e.count ?? "0", 10));
+    cities.forEach((c, i) => {
+      c.restaurants = counts[i] != null ? counts[i] : null;
+    });
+  } else {
+    cities.forEach((c) => (c.restaurants = null));
+  }
 
   const out = cities.map((c) => ({
     name: c.name,
@@ -106,7 +122,6 @@ out count;`;
         : null,
     miles: +(c.crow).toFixed(1),
   }));
-  // Sort by restaurants per capita, highest first.
   out.sort((a, b) => (b.perCapita ?? -1) - (a.perCapita ?? -1));
 
   return res.status(200).json({

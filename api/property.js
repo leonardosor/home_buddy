@@ -61,8 +61,15 @@ export default async function handler(req, res) {
       if (Array.isArray(avm.data.comparables)) {
         out.comps = avm.data.comparables
           .filter((c) => c.price && c.squareFootage)
-          .slice(0, 6)
-          .map((c) => ({ price: Math.round(c.price), sqft: c.squareFootage }));
+          .slice(0, 8)
+          .map((c) => ({
+            price: Math.round(c.price),
+            sqft: c.squareFootage,
+            address: c.formattedAddress || null,
+            beds: c.bedrooms ?? null,
+            baths: c.bathrooms ?? null,
+            distance: c.distance != null ? +Number(c.distance).toFixed(1) : null,
+          }));
       }
     }
 

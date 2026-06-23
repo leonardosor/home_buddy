@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SE Michigan Home Value Analyzer</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root{
     --bg:#0f1420; --panel:#171e2e; --panel2:#1d2638; --line:#2a3650;
@@ -36,10 +38,14 @@
   .addr-row > div{flex:1}
   .status{font-size:12px;margin-top:7px;min-height:16px}
   .status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--accent)}
-  .comp-tbl{width:100%;border-collapse:collapse;margin-bottom:8px}
-  .comp-tbl th{font-size:11px;color:var(--muted);text-align:left;font-weight:500;padding:0 6px 4px}
-  .comp-tbl td{padding:3px 4px}
-  .comp-tbl input{padding:7px 8px;font-size:13px}
+  .comp-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+  .comp{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+  .comp-det{display:flex;flex-direction:column;margin-bottom:5px}
+  .comp-addr{font-size:12.5px;color:var(--ink)}
+  .comp-det small{color:var(--muted);font-size:11px;margin-top:1px}
+  .comp-row{display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:center}
+  .comp-row .cPS{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;text-align:right;min-width:54px}
+  .comp-row input{padding:7px 8px;font-size:13px}
   .x{background:none;color:var(--bad);font-size:18px;padding:0 6px;line-height:1}
   .verdict{border-radius:14px;padding:18px;text-align:center;margin-bottom:14px;border:1px solid var(--line)}
   .verdict .tag{font-size:26px;font-weight:800}
@@ -80,6 +86,20 @@
   .preset-row:last-child{border-bottom:none}
   .preset-row .pl{color:var(--ink)} .preset-row .pl small{color:var(--muted);font-size:11.5px}
   .preset-row b{font-variant-numeric:tabular-nums;white-space:nowrap}
+  #map{height:300px;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}
+  .leaflet-popup-content{font-size:12.5px;margin:8px 10px}
+  .leaflet-container{font:inherit}
+  .maplegend{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:11.5px;color:var(--muted)}
+  .maplegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  .trk{width:100%;border-collapse:collapse}
+  .trk th{font-size:11px;color:var(--muted);text-align:left;font-weight:500;padding:0 6px 6px}
+  .trk td{padding:3px 4px;vertical-align:middle}
+  .trk .it{font-size:13px;color:var(--ink);white-space:nowrap}
+  .trk select,.trk input{padding:6px 7px;font-size:12.5px}
+  .trk .yr{width:78px}
+  .trk select.st-upd{border-color:#1f5a34;color:var(--good)}
+  .trk select.st-rep{border-color:#2f6dab;color:var(--accent)}
+  .trk select.st-org{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -136,12 +156,9 @@
 
     <div class="card">
       <h2>3 &middot; Comparable sales <span style="font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0">(auto-filled from API)</span></h2>
-      <table class="comp-tbl">
-        <thead><tr><th>Sold $</th><th>Sq ft</th><th>$/sqft</th><th></th></tr></thead>
-        <tbody id="comps"></tbody>
-      </table>
+      <div id="comps" class="comp-list"></div>
       <button class="btn-ghost" onclick="addComp()">+ Add comp</button>
-      <div class="hint" style="margin-top:6px">Fetching an address pulls nearby comparables automatically. Add or remove rows freely.</div>
+      <div class="hint" style="margin-top:6px">Fetching an address pulls nearby comparables automatically, with their address, beds/baths and distance. Add or remove rows freely.</div>
     </div>
 
     <div class="card">
@@ -189,11 +206,31 @@
       </div>
     </div>
 
+    <div class="card">
+      <h2>7 &middot; Known upgrades &amp; condition <span style="font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0">(track for every house)</span></h2>
+      <table class="trk">
+        <thead><tr><th>Item</th><th>Status</th><th>Year</th><th>Notes</th></tr></thead>
+        <tbody id="trkBody"></tbody>
+      </table>
+      <div class="hint" style="margin-top:6px">A consistent checklist for comparing homes &mdash; mark what's original vs. updated/replaced, the year, and any detail from the listing or showing.</div>
+    </div>
+
     <button class="btn" style="width:100%;padding:13px" onclick="run()">Analyze this property</button>
   </div>
 
   <!-- RIGHT: RESULTS -->
   <div>
+    <div class="card">
+      <h2>Map</h2>
+      <div id="map"></div>
+      <div class="maplegend">
+        <span><i style="background:#4f9cff"></i>Property</span>
+        <span><i style="background:#ff6b6b"></i>Hazard / data-center sites</span>
+        <span><i style="background:#5fd07a"></i>Catholic schools</span>
+      </div>
+      <div class="hint" id="mapHint" style="margin-top:6px">Fetch a property to plot it with nearby risk sites and Catholic schools.</div>
+    </div>
+
     <div class="card">
       <h2>Verdict</h2>
       <div id="verdict" class="verdict vt-na"><div class="tag">&mdash;</div><div class="ln">Fetch an address (or fill the fields) and press Analyze.</div></div>
@@ -301,6 +338,39 @@ function haversine(a,b,c,d){const R=3958.8,t=Math.PI/180;
 let propCoords=null;
 let commuteMinRaw=null;
 let avmValue=null;
+let lastSchools=[];
+
+/* ---------- map (keyless Leaflet + OpenStreetMap) ---------- */
+let _map=null,_mapLayer=null;
+function ensureMap(){
+  if(_map||typeof L==='undefined')return _map;
+  _map=L.map('map',{scrollWheelZoom:false}).setView([42.24,-83.62],10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(_map);
+  _mapLayer=L.layerGroup().addTo(_map);
+  return _map;
+}
+function dot(color){return {radius:7,color:'#0b1220',weight:1,fillColor:color,fillOpacity:.9};}
+function updateMap(){
+  if(!propCoords||!ensureMap())return;
+  _mapLayer.clearLayers();
+  const pts=[[propCoords.lat,propCoords.lng]];
+  L.circleMarker([propCoords.lat,propCoords.lng],dot('#4f9cff')).addTo(_mapLayer)
+    .bindPopup('<b>This property</b>');
+  SITES.forEach(s=>{
+    L.circleMarker([s.lat,s.lng],dot('#ff6b6b')).addTo(_mapLayer).bindPopup(s.name);
+    pts.push([s.lat,s.lng]);
+  });
+  lastSchools.forEach(s=>{
+    if(s.lat==null||s.lng==null)return;
+    L.circleMarker([s.lat,s.lng],dot('#5fd07a')).addTo(_mapLayer)
+      .bindPopup(`<b>${s.name}</b><br>${s.minutes} min · ${s.miles??'—'} mi`);
+    pts.push([s.lat,s.lng]);
+  });
+  try{_map.fitBounds(pts,{padding:[30,30],maxZoom:12});}catch(e){}
+  setTimeout(()=>_map.invalidateSize(),120);
+  $('mapHint').textContent='Blue = this property · red = risk sites · green = Catholic schools within 30 min.';
+}
 
 const $=id=>document.getElementById(id);
 const money=n=>'$'+Math.round(n).toLocaleString();
@@ -321,24 +391,74 @@ function autoSelectCity(addr){
 
 /* ---------- comps ---------- */
 const compsBody=$('comps');
-function compRow(p='',s=''){
-  const tr=document.createElement('tr');
-  tr.innerHTML=`<td><input type="number" class="cP" value="${p}"></td>
-    <td><input type="number" class="cS" value="${s}"></td>
-    <td class="cPS" style="font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px">&mdash;</td>
-    <td><button class="x" onclick="this.closest('tr').remove();recalcComps()">&times;</button></td>`;
-  compsBody.appendChild(tr);
-  tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',recalcComps));
+function compRow(p='',s='',meta=null){
+  const div=document.createElement('div');div.className='comp';
+  let det;
+  if(meta&&(meta.address||meta.beds!=null||meta.baths!=null||meta.distance!=null)){
+    const bits=[];
+    if(meta.beds!=null||meta.baths!=null)bits.push(`${meta.beds??'?'}bd / ${meta.baths??'?'}ba`);
+    if(meta.sqft)bits.push(`${(+meta.sqft).toLocaleString()} sqft`);
+    if(meta.distance!=null)bits.push(`${meta.distance} mi away`);
+    det=`<div class="comp-det"><span class="comp-addr">${meta.address||'Comparable sale'}</span>${bits.length?`<small>${bits.join(' · ')}</small>`:''}</div>`;
+  }else{
+    det=`<div class="comp-det"><span class="comp-addr">Manual comp</span></div>`;
+  }
+  div.innerHTML=det+`<div class="comp-row">
+    <input type="number" class="cP" placeholder="Sold $" value="${p}">
+    <input type="number" class="cS" placeholder="Sq ft" value="${s}">
+    <span class="cPS">&mdash;</span>
+    <button class="x" onclick="this.closest('.comp').remove();recalcComps()">&times;</button>
+  </div>`;
+  compsBody.appendChild(div);
+  div.querySelectorAll('input').forEach(i=>i.addEventListener('input',recalcComps));
 }
 function addComp(){compRow();}
 function recalcComps(){
-  compsBody.querySelectorAll('tr').forEach(tr=>{
-    const p=+tr.querySelector('.cP').value,s=+tr.querySelector('.cS').value;
-    tr.querySelector('.cPS').textContent=(p>0&&s>0)?'$'+Math.round(p/s):'—';
+  compsBody.querySelectorAll('.comp').forEach(row=>{
+    const p=+row.querySelector('.cP').value,s=+row.querySelector('.cS').value;
+    row.querySelector('.cPS').textContent=(p>0&&s>0)?'$'+Math.round(p/s):'—';
   });
 }
 function clearComps(){compsBody.innerHTML='';}
 compRow();compRow();compRow();recalcComps();
+
+/* ---------- known upgrades / condition tracker ---------- */
+const TRACK_ITEMS=[
+  "Kitchen","Bathrooms","Roof","Mechanicals (furnace / AC)","Water heater",
+  "Windows","Electrical panel / wiring","Plumbing","Appliances","Flooring",
+  "Siding / exterior","Basement / foundation"
+];
+const STATUS_OPTS=[
+  {v:"unknown",t:"Unknown",cls:""},
+  {v:"original",t:"Original",cls:"st-org"},
+  {v:"updated",t:"Updated",cls:"st-upd"},
+  {v:"replaced",t:"Replaced",cls:"st-rep"}
+];
+const trkBody=$('trkBody');
+function buildTracker(){
+  trkBody.innerHTML='';
+  TRACK_ITEMS.forEach(name=>{
+    const tr=document.createElement('tr');
+    const opts=STATUS_OPTS.map(o=>`<option value="${o.v}">${o.t}</option>`).join('');
+    tr.innerHTML=`<td class="it">${name}</td>
+      <td><select class="tStat">${opts}</select></td>
+      <td><input class="tYr yr" type="number" placeholder="yr" min="1900" max="2026"></td>
+      <td><input class="tNote" placeholder="detail"></td>`;
+    trkBody.appendChild(tr);
+    const sel=tr.querySelector('.tStat');
+    const paint=()=>{sel.className='tStat '+(STATUS_OPTS.find(o=>o.v===sel.value).cls||'');};
+    sel.addEventListener('change',paint);paint();
+  });
+}
+function trackerData(){
+  return [...trkBody.querySelectorAll('tr')].map(tr=>({
+    item:tr.querySelector('.it').textContent,
+    status:tr.querySelector('.tStat').value,
+    year:tr.querySelector('.tYr').value||null,
+    note:tr.querySelector('.tNote').value||null
+  }));
+}
+buildTracker();
 
 /* ---------- detractor toggles ---------- */
 document.querySelectorAll('.seg').forEach(seg=>{
@@ -377,7 +497,7 @@ async function fetchProperty(){
     else if(j.lastSalePrice)$('price').value=j.lastSalePrice;
     else if(j.avm)$('price').value=j.avm;
     avmValue=j.avm||null;
-    if(Array.isArray(j.comps)&&j.comps.length){clearComps();j.comps.forEach(c=>compRow(c.price,c.sqft));recalcComps();}
+    if(Array.isArray(j.comps)&&j.comps.length){clearComps();j.comps.forEach(c=>compRow(c.price,c.sqft,c));recalcComps();}
 
     const bits=[];
     if(j.matched)bits.push(j.matched);
@@ -394,7 +514,7 @@ async function fetchProperty(){
 /* ---------- default landmark drive times ---------- */
 async function fetchPresets(){
   if(!propCoords)return;
-  fetchSchools();fetchCities();
+  updateMap();fetchSchools();fetchCities();
   const out=$('presetOut');
   out.innerHTML='<span class="hint">Routing to landmarks…</span>';
   const rows=[];
@@ -413,12 +533,14 @@ async function fetchPresets(){
 /* ---------- Catholic schools within 30 min ---------- */
 async function fetchSchools(){
   if(!propCoords)return;
+  lastSchools=[];
   const out=$('schoolsOut');
   out.innerHTML='<span class="hint">Finding Catholic schools within 30 min…</span>';
   try{
     const r=await fetch(`/api/schools?fromLat=${propCoords.lat}&fromLng=${propCoords.lng}&maxMin=30`);
     const j=await r.json();
     if(j.error){out.innerHTML=`<span class="hint">Couldn't load schools (${j.error}).</span>`;return;}
+    lastSchools=j.schools||[];updateMap();
     if(!j.schools||!j.schools.length){out.innerHTML='<span class="hint">No Catholic schools found within a 30-minute drive.</span>';return;}
     out.innerHTML=j.schools.map(s=>
       `<div class="preset-row"><span class="pl">${s.name}${s.confirmed?'':' <small>(likely)</small>'}${s.address?`<br><small>${s.address}</small>`:''}</span><b>${s.minutes} min &middot; ${s.miles??'—'} mi</b></div>`
@@ -476,8 +598,8 @@ function updateCommuteFactor(){
 
 /* ---------- comps median ---------- */
 function compMedianPS(){
-  const arr=[];compsBody.querySelectorAll('tr').forEach(tr=>{
-    const p=+tr.querySelector('.cP').value,s=+tr.querySelector('.cS').value;
+  const arr=[];compsBody.querySelectorAll('.comp').forEach(row=>{
+    const p=+row.querySelector('.cP').value,s=+row.querySelector('.cS').value;
     if(p>0&&s>0)arr.push(p/s);});
   if(!arr.length)return null;arr.sort((a,b)=>a-b);
   const m=Math.floor(arr.length/2);
@@ -495,7 +617,7 @@ function run(){
   }
   const compPS=compMedianPS();
   const basePS=area.sqft;
-  const nComps=[...compsBody.querySelectorAll('tr')].filter(tr=>+tr.querySelector('.cP').value>0&&+tr.querySelector('.cS').value>0).length;
+  const nComps=[...compsBody.querySelectorAll('.comp')].filter(row=>+row.querySelector('.cP').value>0&&+row.querySelector('.cS').value>0).length;
   let blendPS,compW=0;
   if(compPS){compW=Math.min(0.7,0.2+0.13*nComps);blendPS=compPS*compW+basePS*(1-compW);}else blendPS=basePS;
   const baseVal=blendPS*sqft;

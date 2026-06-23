@@ -2,8 +2,45 @@
 //   -> { schools:[{name, address, minutes, miles, confirmed}], maxMin, scanned }
 // Keyless: OpenStreetMap Overpass finds Catholic schools nearby, OSRM computes drive time.
 
-const OVERPASS = "https://overpass-api.de/api/interpreter";
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
 const OSRM = "https://router.project-osrm.org";
+
+export const config = { maxDuration: 30 };
+
+async function overpass(q) {
+  let lastErr = "no endpoints";
+  for (const ep of OVERPASS_ENDPOINTS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 18000);
+      const r = await fetch(ep, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "se-mi-home-analyzer/1.0",
+        },
+        body: "data=" + encodeURIComponent(q),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (!r.ok) { lastErr = `HTTP ${r.status} @ ${ep}`; continue; }
+      const text = await r.text();
+      try {
+        return { ok: true, data: JSON.parse(text) };
+      } catch {
+        lastErr = `non-JSON @ ${ep}`;
+        continue;
+      }
+    } catch (e) {
+      lastErr = `${e && e.name === "AbortError" ? "timeout" : String(e)} @ ${ep}`;
+    }
+  }
+  return { ok: false, error: lastErr };
+}
 
 function haversine(a, b, c, d) {
   const R = 3958.8, t = Math.PI / 180;
@@ -12,21 +49,19 @@ function haversine(a, b, c, d) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// Strong Catholic name signals (schools named for saints/feasts are overwhelmingly Catholic).
 const NAME_RE =
   /\b(catholic|sacred heart|our lady|holy (cross|family|trinity|name|redeemer|spirit|rosary|angels)|immaculate|blessed sacrament|st\.?\s|saint\s|cristo rey|guardian angels|divine child|gabriel richard|father gabriel)/i;
+const EXCLUDE_RE =
+  /\b(lutheran|baptist|methodist|presbyterian|adventist|episcopal|reformed|christian reformed|nazarene|pentecostal|orthodox)\b/i;
 
 function isCatholic(tags) {
   const denom = (tags.denomination || "").toLowerCase();
   const relig = (tags.religion || "").toLowerCase();
   if (denom.includes("catholic")) return { ok: true, confirmed: true };
-  // religion=christian alone is not enough; pair with a Catholic name.
   const name = tags.name || tags["name:en"] || "";
   if (NAME_RE.test(name)) {
-    // Exclude obvious non-Catholic Christian denominations.
-    if (/\b(lutheran|baptist|methodist|presbyterian|adventist|episcopal|reformed|christian reformed|nazarene|pentecostal|orthodox)\b/i.test(name))
-      return { ok: false };
-    return { ok: true, confirmed: denom.includes("catholic") || relig === "christian" };
+    if (EXCLUDE_RE.test(name)) return { ok: false };
+    return { ok: true, confirmed: relig === "christian" };
   }
   return { ok: false };
 }
@@ -46,29 +81,19 @@ export default async function handler(req, res) {
   if (!fromLat || !fromLng)
     return res.status(400).json({ error: "fromLat and fromLng required" });
 
-  // 30 min of driving ~ up to ~30 miles on highway. Search a generous 45 km radius.
   const radius = 45000;
-  const q = `[out:json][timeout:25];
+  const q = `[out:json][timeout:20];
 (
   node["amenity"="school"](around:${radius},${fromLat},${fromLng});
   way["amenity"="school"](around:${radius},${fromLat},${fromLng});
 );
 out center tags;`;
 
-  let elements = [];
-  try {
-    const r = await fetch(OVERPASS, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "data=" + encodeURIComponent(q),
-    });
-    const j = await r.json();
-    elements = Array.isArray(j.elements) ? j.elements : [];
-  } catch (e) {
-    return res.status(502).json({ error: "overpass_failed", message: String(e) });
-  }
+  const o = await overpass(q);
+  if (!o.ok)
+    return res.status(502).json({ error: "overpass_failed", message: o.error });
+  const elements = Array.isArray(o.data.elements) ? o.data.elements : [];
 
-  // Filter to Catholic, get coordinates, de-dupe by name+rounded coord.
   const seen = new Set();
   let cands = [];
   for (const el of elements) {
@@ -92,14 +117,12 @@ out center tags;`;
     });
   }
 
-  // Keep the 60 nearest (straight-line) before routing, to bound the OSRM request.
   cands.sort((a, b) => a.crow - b.crow);
   cands = cands.slice(0, 60);
 
   if (!cands.length)
     return res.status(200).json({ schools: [], maxMin, scanned: elements.length });
 
-  // OSRM table: source 0 = home, destinations = each school. Get duration + distance.
   const coords =
     `${fromLng},${fromLat};` + cands.map((c) => `${c.lng},${c.lat}`).join(";");
   let durations = null, distances = null;
@@ -121,12 +144,11 @@ out center tags;`;
         ? +(distances[i + 1] / 1609.34).toFixed(1)
         : null;
     } else {
-      // Fallback: straight-line * road factor / 40 mph.
       const mi = c.crow * 1.3;
       minutes = Math.round((mi / 40) * 60);
       miles = +mi.toFixed(1);
     }
-    return { name: c.name, address: c.address, minutes, miles, confirmed: c.confirmed };
+    return { name: c.name, address: c.address, lat: c.lat, lng: c.lng, minutes, miles, confirmed: c.confirmed };
   });
 
   const within = schools

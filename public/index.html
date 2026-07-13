@@ -57,6 +57,10 @@
   .status.ok{color:var(--good)} .status.err{color:var(--bad)} .status.busy{color:var(--accent)}
   .comp-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
   .comp{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+  .comp-photo{width:100%;height:110px;object-fit:cover;border-radius:8px;margin-bottom:7px;border:1px solid var(--line);background:#e4e9f2;display:block}
+  .photo-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .photo-thumb{flex:1 1 30%;min-width:110px;aspect-ratio:4/3;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:#e4e9f2;display:block}
+  .photo-hint{font-size:11px;color:var(--muted);margin-top:6px}
   .comp-det{display:flex;flex-direction:column;margin-bottom:6px}
   .comp-addr{font-size:12.5px;color:var(--ink);font-weight:600}
   .comp-det small{color:var(--muted);font-size:11px;margin-top:1px}
@@ -179,6 +183,8 @@
           <div class="hint">The API can't judge condition &mdash; set this from the photos.</div>
         </div>
       </div>
+      <div class="photo-row" id="subjectPhotos"></div>
+      <div class="photo-hint" id="subjectPhotosHint"></div>
     </div>
 
     <div class="card">
@@ -339,7 +345,9 @@ const AREAS = {
   "Saline":         {sqft:215, crime:12, note:"Low crime; near Stargate data center"},
   "Dexter":         {sqft:230, crime:11, note:"Desirable, low crime"},
   "Brighton":       {sqft:208, crime:18, note:"Livingston Co.; median ~$285K"},
+  "Whitmore Lake":  {sqft:215, crime:15, note:"Lake community, Washtenaw/Livingston line"},
   "Pinckney":       {sqft:200, crime:14, note:"Lakes area, Livingston Co."},
+  "Jackson":        {sqft:125, crime:45, note:"Jackson Co. seat; value market, higher crime"},
   "Canton":         {sqft:190, crime:15, note:"Suburban Wayne Co."},
   "Belleville":     {sqft:165, crime:30, note:"Near I-94 Wayne Disposal site"},
   "Ypsilanti":      {sqft:160, crime:40, note:"Value market; data-center fights nearby"},
@@ -407,6 +415,19 @@ function updateMap(){
 const $=id=>document.getElementById(id);
 const money=n=>'$'+Math.round(n).toLocaleString();
 
+/* ---------- subject property photos ---------- */
+function renderSubjectPhotos(address){
+  const row=$('subjectPhotos');
+  if(!address&&!propCoords){row.innerHTML='';$('subjectPhotosHint').textContent='';return;}
+  const latQ=propCoords?`&lat=${propCoords.lat}&lng=${propCoords.lng}`:'';
+  const addrQ=address?`address=${encodeURIComponent(address)}`:'';
+  row.innerHTML=[0,1,2].map(v=>
+    `<img class="photo-thumb" loading="lazy" alt="Subject property photo ${v+1}"
+      src="/api/photo?${addrQ}${latQ}&v=${v}" onerror="this.style.opacity='.35'">`
+  ).join('');
+  $('subjectPhotosHint').textContent='Street-level photos when available, otherwise an aerial view of the parcel.';
+}
+
 /* ---------- city dropdown ---------- */
 const citySel=$('city');
 Object.keys(AREAS).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;citySel.appendChild(o);});
@@ -425,17 +446,22 @@ function autoSelectCity(addr){
 const compsBody=$('comps');
 function compRow(p='',s='',meta=null){
   const div=document.createElement('div');div.className='comp';
-  let det;
+  let det,photo='';
   if(meta&&(meta.address||meta.beds!=null||meta.baths!=null||meta.distance!=null)){
     const bits=[];
     if(meta.beds!=null||meta.baths!=null)bits.push(`${meta.beds??'?'}bd / ${meta.baths??'?'}ba`);
     if(meta.sqft)bits.push(`${(+meta.sqft).toLocaleString()} sqft`);
     if(meta.distance!=null)bits.push(`${meta.distance} mi away`);
     det=`<div class="comp-det"><span class="comp-addr">${meta.address||'Comparable sale'}</span>${bits.length?`<small>${bits.join(' · ')}</small>`:''}</div>`;
+    if(meta.address){
+      photo=`<img class="comp-photo" loading="lazy" alt="${meta.address}"
+        src="/api/photo?address=${encodeURIComponent(meta.address)}&v=0"
+        onerror="this.style.display='none'">`;
+    }
   }else{
     det=`<div class="comp-det"><span class="comp-addr">Manual comp</span></div>`;
   }
-  div.innerHTML=det+`<div class="comp-row">
+  div.innerHTML=photo+det+`<div class="comp-row">
     <input type="number" class="cP" placeholder="Sold $" value="${p}">
     <input type="number" class="cS" placeholder="Sq ft" value="${s}">
     <span class="cPS">&mdash;</span>
@@ -513,6 +539,7 @@ async function fetchProperty(){
       const g=await fetch('/api/geocode?address='+encodeURIComponent(addr)).then(x=>x.json());
       if(g.lat){propCoords={lat:g.lat,lng:g.lng};autoSelectCity(g.matched);
         st.className='status ok';st.textContent='Located (no RentCast key set — fields stay manual). '+(g.matched||'');
+        renderSubjectPhotos(g.matched||addr);
         fetchPresets();}
       else{st.className='status err';st.textContent='Could not locate that address.';}
       $('fetchBtn').disabled=false;return;
@@ -537,6 +564,7 @@ async function fetchProperty(){
     if(j.listPrice)bits.push('listed '+money(j.listPrice));
     else if(j.lastSalePrice)bits.push('last sold '+money(j.lastSalePrice)+(j.lastSaleDate?(' ('+j.lastSaleDate.slice(0,7)+')'):''));
     st.className='status ok';st.textContent='Loaded: '+bits.join(' · ');
+    renderSubjectPhotos(j.matched||addr);
     fetchPresets();
     run();
   }catch(e){st.className='status err';st.textContent='Network error: '+e;}
